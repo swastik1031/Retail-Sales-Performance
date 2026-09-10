@@ -1,0 +1,36 @@
+"""
+LinkGuard-style reproducibility script for the Retail Sales SQL layer.
+Loads the Big Mart Sales dataset and normalizes it into a star schema
+(fact_sales + dim_item + dim_outlet) in a SQLite database.
+
+Usage: python build_database.py
+Requires: pandas, and 'train.csv' (Big Mart Sales dataset) in this folder.
+"""
+import pandas as pd
+import sqlite3
+
+df = pd.read_csv('train.csv')
+
+# Clean inconsistent categorical labels (known quirk in this dataset)
+df['Item_Fat_Content'] = df['Item_Fat_Content'].replace({
+    'low fat': 'Low Fat', 'LF': 'Low Fat', 'reg': 'Regular'
+})
+
+conn = sqlite3.connect('retail_sales.db')
+
+dim_item = df[['Item_Identifier','Item_Weight','Item_Fat_Content','Item_Visibility',
+               'Item_Type','Item_MRP']].drop_duplicates(subset='Item_Identifier')
+dim_outlet = df[['Outlet_Identifier','Outlet_Establishment_Year','Outlet_Size',
+                  'Outlet_Location_Type','Outlet_Type']].drop_duplicates(subset='Outlet_Identifier')
+fact_sales = df[['Item_Identifier','Outlet_Identifier','Item_Outlet_Sales']] \
+                .reset_index().rename(columns={'index': 'sale_id'})
+
+dim_item.to_sql('dim_item', conn, index=False, if_exists='replace')
+dim_outlet.to_sql('dim_outlet', conn, index=False, if_exists='replace')
+fact_sales.to_sql('fact_sales', conn, index=False, if_exists='replace')
+
+print("Database built: retail_sales.db")
+for t in ['dim_item', 'dim_outlet', 'fact_sales']:
+    n = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+    print(f"  {t}: {n} rows")
+conn.close()
